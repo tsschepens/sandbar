@@ -990,6 +990,12 @@ handle_global(void *data, struct wl_registry *registry,
 static void
 teardown_bar(Bar *bar)
 {
+    Seat *seat;
+    wl_list_for_each(seat, &seat_list, link) {
+        if (seat->bar == bar) {
+            seat->bar = NULL;
+        }
+    }
 	if (bar->title)
 		free(bar->title);
 	if (bar->layout)
