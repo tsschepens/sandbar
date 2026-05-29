@@ -64,6 +64,8 @@
 	"	-urgent-bg-color [RGBA]			specify background color of urgent tags\n" \
 	"	-title-fg-color [RGBA]			specify text color of title bar\n" \
 	"	-title-bg-color [RGBA]			specify background color of title bar\n" \
+  "	-border-width [PIXELS]			specify border width\n" \
+	"	-border-color [RGBA]			specify border color\n" \
 	"Other\n"							\
 	"	-v					get version information\n" \
 	"	-h					view this help text\n"
@@ -125,6 +127,7 @@ static uint32_t tags_l;
 static char *fontstr = "monospace:size=16";
 static struct fcft_font *font;
 static uint32_t height, textpadding, vertical_padding = 1, buffer_scale = 1;
+static uint32_t border_width = 0;
 
 static bool hidden, bottom, hide_vacant, no_title, no_status_commands, no_mode, no_layout, hide_normal_mode;
 
@@ -136,6 +139,7 @@ static pixman_color_t urgent_fg_color = { .red = 0x2222, .green = 0x2222, .blue 
 static pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
 static pixman_color_t title_fg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
 static pixman_color_t title_bg_color = { .red = 0x0000, .green = 0x5555, .blue = 0x7777, .alpha = 0xffff, };
+static pixman_color_t border_color = { .red = 0x0000, .green = 0x3333, .blue = 0x5555, .alpha = 0xffff, };
 
 static bool run_display;
 
@@ -454,6 +458,16 @@ draw_frame(Bar *bar)
 	/* Draw background and foreground on bar */
 	pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
 	pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
+  /* Draw border along the anchored edge */
+	if (border_width > 0) {
+		uint32_t bw = border_width * buffer_scale;
+		uint32_t y1 = bar->bottom ? 0 : bar->height - bw;
+		uint32_t y2 = bar->bottom ? bw : bar->height;
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, final, &border_color, 1, &(pixman_box32_t){.x1 = 0, .x2 = bar->width, .y1 = bar->height-bw, .y2 = bar->height});
+	  pixman_image_fill_boxes(PIXMAN_OP_SRC, final, &border_color, 1, &(pixman_box32_t){.x1 = 0, .x2 = bar->width, .y1 = 0, .y2 = bw});
+		pixman_image_fill_boxes(PIXMAN_OP_SRC, final, &border_color, 1, &(pixman_box32_t){.x1 = 0, .x2 = bw, .y1 = 0, .y2 = bar->height});
+		pixman_image_fill_boxes(PIXMAN_OP_SRC, final, &border_color, 1, &(pixman_box32_t){.x1 = bar->width-bw, .x2 = bar->width, .y1 = 0, .y2 = bar->height});
+  }
 
 	pixman_image_unref(foreground);
 	pixman_image_unref(background);
@@ -1308,7 +1322,16 @@ main(int argc, char **argv)
 				DIE("Option -urgent-bg-color requires an argument");
 			if (parse_color(argv[i], &urgent_bg_color) == -1)
 				DIE("malformed color string");
-		} else if (!strcmp(argv[i], "-title-fg-color")) {
+		} else if (!strcmp(argv[i], "-border-width")) {
+			if (++i >= argc)
+				DIE("Option -border-width requires an argument");
+			border_width = MAX(MIN(atoi(argv[i]), 100), 0);
+		} else if (!strcmp(argv[i], "-border-color")) {
+			if (++i >= argc)
+				DIE("Option -border-color requires an argument");
+			if (parse_color(argv[i], &border_color) == -1)
+				DIE("malformed color string");
+    } else if (!strcmp(argv[i], "-title-fg-color")) {
 			if (++i >= argc)
 				DIE("Option -title-fg-color requires an argument");
 			if (parse_color(argv[i], &title_fg_color) == -1)
