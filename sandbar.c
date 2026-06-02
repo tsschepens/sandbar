@@ -66,6 +66,7 @@
 	"	-title-bg-color [RGBA]			specify background color of title bar\n" \
   "	-border-width [PIXELS]			specify border width\n" \
 	"	-border-color [RGBA]			specify border color\n" \
+  "        -show_window_icons                      specify wether or not to display tags icon\n" \
 	"Other\n"							\
 	"	-v					get version information\n" \
 	"	-h					view this help text\n"
@@ -83,7 +84,7 @@ typedef struct {
 	uint32_t width, height;
 	uint32_t textpadding;
 	uint32_t stride, bufsize;
-	
+  char *window_icon;  
 	uint32_t mtags, ctags, urg;
 	bool sel;
 	char *layout, *title, *status;
@@ -123,6 +124,7 @@ static struct wl_list bar_list, seat_list;
 
 static char **tags;
 static uint32_t tags_l;
+static bool show_window_icons = true;
 
 static char *fontstr = "monospace:size=16";
 static struct fcft_font *font;
@@ -354,8 +356,7 @@ draw_text(char *text,
 static int
 draw_frame(Bar *bar)
 {
-	/* Allocate buffer to be attached to the surface */
-        int fd = allocate_shm_file(bar->bufsize);
+  int fd = allocate_shm_file(bar->bufsize);
 	if (fd == -1)
 		return -1;
 
@@ -371,14 +372,11 @@ draw_frame(Bar *bar)
 	wl_shm_pool_destroy(pool);
 	close(fd);
 
-	/* Pixman image corresponding to main buffer */
 	pixman_image_t *final = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, data, bar->width * 4);
 	
-	/* Text background and foreground layers */
 	pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
 	pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
 	
-	/* Draw on images */
 	uint32_t x = 0;
 	uint32_t y = (bar->height + font->ascent - font->descent) / 2;
 	uint32_t boxs = font->height / 9;
@@ -395,25 +393,47 @@ draw_frame(Bar *bar)
 		pixman_color_t *fg_color = urgent ? &urgent_fg_color : (active ? &active_fg_color : &inactive_fg_color);
 		pixman_color_t *bg_color = urgent ? &urgent_bg_color : (active ? &active_bg_color : &inactive_bg_color);
 		
-		if (!hide_vacant && occupied) {
-			pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
-						fg_color, 1, &(pixman_box32_t){
-							.x1 = x + boxs, .x2 = x + boxs + boxw,
-							.y1 = boxs, .y2 = boxs + boxw
-						});
-			if ((!bar->sel || !active) && boxw >= 3) {
-				/* Make box hollow */
+		if (show_window_icons && active && bar->window_icon) {
+			if (!hide_vacant && occupied) {
 				pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
-							&(pixman_color_t){ 0 },
-							1, &(pixman_box32_t){
-								.x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
-								.y1 = boxs + 1, .y2 = boxs + boxw - 1
+							fg_color, 1, &(pixman_box32_t){
+								.x1 = x + boxs, .x2 = x + boxs + boxw,
+								.y1 = boxs, .y2 = boxs + boxw
 							});
+				if ((!bar->sel || !active) && boxw >= 3) {
+					pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+								&(pixman_color_t){ 0 },
+								1, &(pixman_box32_t){
+									.x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
+									.y1 = boxs + 1, .y2 = boxs + boxw - 1
+								});
+				}
 			}
+			
+			x = draw_text(bar->window_icon, x, y, foreground, background,
+				      fg_color, bg_color,  
+				      bar->width, bar->height, bar->textpadding,
+				      false);
+		} else {
+			if (!hide_vacant && occupied) {
+				pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+							fg_color, 1, &(pixman_box32_t){
+								.x1 = x + boxs, .x2 = x + boxs + boxw,
+								.y1 = boxs, .y2 = boxs + boxw
+							});
+				if ((!bar->sel || !active) && boxw >= 3) {
+					pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+								&(pixman_color_t){ 0 },
+								1, &(pixman_box32_t){
+									.x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
+									.y1 = boxs + 1, .y2 = boxs + boxw - 1
+								});
+				}
+			}
+			
+			x = draw_text(tags[i], x, y, foreground, background, fg_color, bg_color,
+				      bar->width, bar->height, bar->textpadding, false);
 		}
-		
-		x = draw_text(tags[i], x, y, foreground, background, fg_color, bg_color,
-			      bar->width, bar->height, bar->textpadding, false);
 	}
 
 	if (!no_mode) {
@@ -447,7 +467,7 @@ draw_frame(Bar *bar)
 			      bar->width - status_width, bar->height, bar->textpadding,
 			      false);
 	}
-
+	 
 	pixman_image_fill_boxes(PIXMAN_OP_SRC, background,
 				bar->sel ? &title_bg_color : &title_bg_color, 1,
 				&(pixman_box32_t){
@@ -455,10 +475,8 @@ draw_frame(Bar *bar)
 					.y1 = 0, .y2 = bar->height
 				});
 
-	/* Draw background and foreground on bar */
 	pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
 	pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
-  /* Draw border along the anchored edge */
 	if (border_width > 0) {
 		uint32_t bw = border_width * buffer_scale;
 		uint32_t y1 = bar->bottom ? 0 : bar->height - bw;
@@ -483,7 +501,6 @@ draw_frame(Bar *bar)
 	return 0;
 }
 
-/* Layer-surface setup adapted from layer-shell example in [wlroots] */
 static void
 layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
 			uint32_t serial, uint32_t w, uint32_t h)
@@ -865,22 +882,62 @@ river_seat_status_unfocused_output(void *data, struct zriver_seat_status_v1 *sea
 	}
 }
 
+static const char*
+get_window_icon(const char *title) {
+    if (!title || !*title)
+        return NULL;
+    if (strstr(title, "Chromium"))
+        return " ";  
+    else if (strstr(title, "kitty") || strstr(title, "~"))
+        return " ";  
+    else if (strstr(title, "nan") || strstr(title, "nvim"))
+        return " "; 
+    else if (strstr(title, "app.main") || strstr(title, "splash"))
+        return " ";  
+    else if (strstr(title, "Yazi") || strstr(title, "yz"))
+       return " "; 
+    else if (strstr(title, "btop"))
+      return "󱎴 "; 
+    else if (!strcmp(title,"f"))
+      return " ";
+    else if (strstr(title,"yayf"))
+      return " ";
+    else if (strstr(title,"yayr"))
+      return " ";
+    else
+        return " ";  
+}
+
 static void
 river_seat_status_focused_view(void *data, struct zriver_seat_status_v1 *seat_status,
-			       const char *title)
+                               const char *title)
 {
-	if (no_title)
-		return;
-	
-	Seat *seat = (Seat *)data;
+    if (no_title)
+        return;
+    
+    Seat *seat = (Seat *)data;
 
-	if (!seat->bar)
-		return;
-	if (seat->bar->title)
-		free(seat->bar->title);
-	if (!(seat->bar->title = strdup(title)))
-		EDIE("strdup");
-	seat->bar->redraw = true;
+    if (!seat->bar)
+        return;
+    if (seat->bar->title)
+        free(seat->bar->title);
+    if (!(seat->bar->title = strdup(title)))
+        EDIE("strdup");
+        
+    // Set window icon based on title
+    if (show_window_icons) {
+        if (seat->bar->window_icon)
+            free(seat->bar->window_icon);
+        const char *icon = get_window_icon(title);
+        if (icon) {
+            if (!(seat->bar->window_icon = strdup(icon)))
+                EDIE("strdup");
+        } else {
+            seat->bar->window_icon = NULL;
+        }
+    }
+    
+    seat->bar->redraw = true;
 }
 
 static void
@@ -1018,6 +1075,8 @@ teardown_bar(Bar *bar)
 		free(bar->status);
 	if (bar->output_name)
 		free(bar->output_name);
+   if (bar->window_icon)  
+        free(bar->window_icon);  
 	zriver_output_status_v1_destroy(bar->river_output_status);
 	if (!bar->hidden) {
 		zwlr_layer_surface_v1_destroy(bar->layer_surface);
@@ -1038,6 +1097,8 @@ teardown_seat(Seat *seat)
 	wl_seat_destroy(seat->wl_seat);
 	free(seat);
 }
+
+
 
 static void
 handle_global_remove(void *data, struct wl_registry *registry, uint32_t name)
@@ -1270,7 +1331,9 @@ main(int argc, char **argv)
 			bottom = true;
 		} else if (!strcmp(argv[i], "-hidden")) {
 			hidden = true;
-		} else if (!strcmp(argv[i], "-no-title")) {
+		} else if (!strcmp(argv[i], "-no-window-icons")) {
+      show_window_icons = false; 
+    } else if (!strcmp(argv[i], "-no-title")) {
 			no_title = true;
 		} else if (!strcmp(argv[i], "-no-status-commands")) {
 			no_status_commands = true;
