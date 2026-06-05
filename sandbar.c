@@ -148,7 +148,6 @@ static bool run_display;
 static void
 wl_buffer_release(void *data, struct wl_buffer *wl_buffer)
 {
-	/* Sent by the compositor when it's no longer using this buffer */
 	wl_buffer_destroy(wl_buffer);
 }
 
@@ -156,7 +155,6 @@ static const struct wl_buffer_listener wl_buffer_listener = {
 	.release = wl_buffer_release,
 };
 
-/* Shared memory support function adapted from [wayland-book] */
 static int
 allocate_shm_file(size_t size)
 {
@@ -174,7 +172,6 @@ allocate_shm_file(size_t size)
 	return fd;
 }
 
-/* Color parsing logic adapted from [sway] */
 static int
 parse_color(const char *str, pixman_color_t *clr)
 {
@@ -182,7 +179,6 @@ parse_color(const char *str, pixman_color_t *clr)
 		str++;
 	int len = strlen(str);
 
-	// Disallows "0x" prefix that strtoul would ignore
 	if ((len != 6 && len != 8) || !isxdigit(str[0]) || !isxdigit(str[1]))
 		return -1;
 
@@ -237,11 +233,9 @@ draw_text(char *text,
 
 	uint32_t codepoint, state = UTF8_ACCEPT, last_cp = 0;
 	for (char *p = text; *p; p++) {
-		/* Check for inline ^ commands */
 		if (!no_status_commands && commands && state == UTF8_ACCEPT && *p == '^') {
 			p++;
 			if (*p != '^') {
-				/* Parse color */
 				char *arg, *end;
 				if (!(arg = strchr(p, '(')) || !(end = strchr(arg + 1, ')')))
 					continue;
@@ -268,26 +262,18 @@ draw_text(char *text,
 						}
 					}
 				}
-
-				/* Restore string for later redraws */
 				*--arg = '(';
 				*end = ')';
 				p = end;
 				continue;
 			}
 		}
-
-		/* Returns nonzero if more bytes are needed */
 		if (utf8decode(&state, &codepoint, *p))
 			continue;
 
-		/* Turn off subpixel rendering, which complicates things when
-		 * mixed with alpha channels */
 		const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE);
 		if (!glyph)
 			continue;
-
-		/* Adjust x position based on kerning with previous glyph */
 		long kern = 0;
 		if (last_cp)
 			fcft_kerning(font, last_cp, codepoint, &kern, NULL);
@@ -297,18 +283,11 @@ draw_text(char *text,
 		x += kern;
 
 		if (draw_fg) {
-			/* Detect and handle pre-rendered glyphs (e.g. emoji) */
 			if (pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8) {
-				/* Only the alpha channel of the mask is used, so we can
-				 * use fgfill here to blend prerendered glyphs with the
-				 * same opacity */
 				pixman_image_composite32(
 					PIXMAN_OP_OVER, glyph->pix, fg_fill, foreground, 0, 0, 0, 0,
 					x + glyph->x, y - glyph->y, glyph->width, glyph->height);
 			} else {
-				/* Applying the foreground color here would mess up
-				 * component alphas for subpixel-rendered text, so we
-				 * apply it when blending. */
 				pixman_image_composite32(
 					PIXMAN_OP_OVER, fg_fill, glyph->pix, foreground, 0, 0, 0, 0,
 					x + glyph->x, y - glyph->y, glyph->width, glyph->height);
@@ -322,8 +301,6 @@ draw_text(char *text,
 							.y1 = 0, .y2 = buf_height
 						});
 		}
-		
-		/* increment pen position */
 		x = nx;
 	}
 	
@@ -334,7 +311,6 @@ draw_text(char *text,
 	
 	nx = x + padding;
 	if (draw_bg) {
-		/* Fill padding background */
 		pixman_image_fill_boxes(PIXMAN_OP_OVER, background,
 					bg_color, 1, &(pixman_box32_t){
 						.x1 = ix, .x2 = ix + padding,
@@ -346,7 +322,6 @@ draw_text(char *text,
 						.y1 = 0, .y2 = buf_height
 					});
 	}
-	
 	return nx;
 }
 
@@ -608,7 +583,6 @@ pointer_frame(void *data, struct wl_pointer *pointer)
 		x += TEXT_WIDTH(tags[i], seat->bar->width - x, seat->bar->textpadding, false) / buffer_scale;
 	} while (seat->pointer_x >= x && ++i < tags_l);
 	if (i < tags_l) {
-		/* Clicked on tags */
 		char *cmd;
 		if (button == BTN_LEFT)
 			cmd = "set-focused-tags";
@@ -645,22 +619,16 @@ pointer_frame(void *data, struct wl_pointer *pointer)
 			return;
 		}
 	}
-
-	// TODO: run custom commands upon clicking layout, title, status
 	if (seat->bar->mtags & seat->bar->ctags) {
 		x += TEXT_WIDTH(seat->bar->layout, seat->bar->width - x, seat->bar->textpadding, false) / buffer_scale;
 		if (seat->pointer_x < x) {
-			/* clicked on layout */
 			return;
 		}
 	}
 	
 	if (seat->pointer_x < seat->bar->width / buffer_scale - TEXT_WIDTH(seat->bar->status, seat->bar->width - x, seat->bar->textpadding, true) / buffer_scale) {
-		/* clicked on title */
 		return;
 	}
-	
-	/* clicked on status */
 }
 
 static void
@@ -1433,7 +1401,6 @@ main(int argc, char **argv)
 		}
 	}
 
-	/* Set up display and protocols */
 	if (!(display = wl_display_connect(NULL)))
 		DIE("Failed to create display");
 
@@ -1446,7 +1413,6 @@ main(int argc, char **argv)
 	if (!compositor || !shm || !layer_shell || !river_status_manager || !river_control)
 		DIE("Compositor does not support all needed protocols");
 
-	/* Load selected font */
 	fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
 	fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
 
@@ -1458,7 +1424,6 @@ main(int argc, char **argv)
 	textpadding = font->height / 2;
 	height = font->height / buffer_scale + vertical_padding * 2;
 
-	/* Configure tag names */
 	if (!tags) {
 		tags_l = 9;
 		if (!(tags = malloc(tags_l * sizeof(char *))))
@@ -1471,28 +1436,21 @@ main(int argc, char **argv)
 		}
 	}
 	
-	/* Setup bars and seats */
 	wl_list_for_each(bar, &bar_list, link)
 		setup_bar(bar);
 	wl_list_for_each(seat, &seat_list, link)
 		setup_seat(seat);
 	wl_display_roundtrip(display);
 
-	/* Configure stdin */
 	if (fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK) == -1)
 		EDIE("fcntl");
 
-	/* Set up signals */
 	signal(SIGINT, sig_handler);
 	signal(SIGHUP, sig_handler);
 	signal(SIGTERM, sig_handler);
 	signal(SIGCHLD, SIG_IGN);
-	
-	/* Run */
 	run_display = true;
 	event_loop();
-
-	/* Clean everything up */
 	if (tags) {
 		for (uint32_t i = 0; i < tags_l; i++)
 			free(tags[i]);
