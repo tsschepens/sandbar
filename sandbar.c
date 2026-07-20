@@ -863,15 +863,21 @@ get_window_icon(const char *title) {
     else if (strstr(title, "app.main") || strstr(title, "splash"))
         return " ";  
     else if (strstr(title, "Yazi") || strstr(title, "yz"))
-       return " "; 
+        return " "; 
     else if (strstr(title, "btop"))
-      return "󱎴 "; 
+        return "󱎴 "; 
     else if (!strcmp(title,"f"))
-      return " ";
+        return " ";
     else if (strstr(title,"yayf"))
-      return " ";
+        return " ";
     else if (strstr(title,"yayr"))
-      return " ";
+        return " ";
+    else if (strstr(title,"VMware Workstation"))
+        return "󰢔 ";
+    else if (strstr(title,".java") || strstr(title,".xml"))
+        return "";
+
+
     else
         return " ";  
 }
