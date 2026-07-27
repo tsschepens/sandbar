@@ -856,7 +856,7 @@ get_window_icon(const char *title) {
         return NULL;
     if (strstr(title, "Chromium"))
         return " ";  
-    else if (strstr(title, "kitty") || strstr(title, "~"))
+    else if (strstr(title, "kitty") || strstr(title, "~") || strstr(title, "herdr"))
         return " ";  
     else if (strstr(title, "nan") || strstr(title, "nvim"))
         return " "; 
